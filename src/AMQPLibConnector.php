@@ -84,6 +84,18 @@ class AMQPLibConnector extends AbstractAMQPConnector
     public function PostToExchange($connection, $details, $body, $properties, $headers)
     {
         $ch = $connection->channel();
+        $this->Post($ch, $properties, $details, $headers, $body);
+
+        $ch->close();
+
+        /* Satisfy Celery::PostTask() error checking */
+        /* TODO: catch some exceptions? Which ones? */
+        return true;
+    }
+
+    public function Rpc($connection, $details, $body, $properties, $headers)
+    {
+        $ch = $connection->channel();
 
         $ch->queue_declare(
             $properties['reply_to'],    /* queue name - "celery" */
@@ -98,10 +110,7 @@ class AMQPLibConnector extends AbstractAMQPConnector
             $details['exchange']    /* exchange name - "celery" */
         );
 
-        $properties['application_headers'] = new \PhpAmqpLib\Wire\AMQPTable($headers);
-        $msg = new \PhpAmqpLib\Message\AMQPMessage($body, $properties);
-
-        $ch->basic_publish($msg, $details['exchange'], $details['routing_key']);
+        $this->Post($ch, $properties, $details, $headers, $body);
 
         $ch->close();
 
@@ -170,5 +179,13 @@ class AMQPLibConnector extends AbstractAMQPConnector
         }
 
         return false;
+    }
+
+    private function Post($ch, $properties, $details, $headers, $body)
+    {
+        $properties['application_headers'] = new \PhpAmqpLib\Wire\AMQPTable($headers);
+        $msg = new \PhpAmqpLib\Message\AMQPMessage($body, $properties);
+
+        $ch->basic_publish($msg, $details['exchange'], $details['routing_key']);
     }
 }
