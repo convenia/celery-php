@@ -86,23 +86,15 @@ class AMQPLibConnector extends AbstractAMQPConnector
         $ch = $connection->channel();
 
         $ch->queue_declare(
-            $details['binding'],    /* queue name - "celery" */
+            $properties['reply_to'],    /* queue name - "celery" */
             false,                  /* passive */
             true,                   /* durable */
             false,                  /* exclusive */
-            false                   /* auto_delete */
-        );
-
-        $ch->exchange_declare(
-            $details['exchange'],    /* name */
-            'direct',                /* type */
-            false,                   /* passive */
-            true,                    /* durable */
-            false                    /* auto_delete */
+            true                   /* auto_delete */
         );
 
         $ch->queue_bind(
-            $details['binding'],    /* queue name - "celery" */
+            $properties['reply_to'],    /* temporary queue name  */
             $details['exchange']    /* exchange name - "celery" */
         );
 
@@ -143,23 +135,6 @@ class AMQPLibConnector extends AbstractAMQPConnector
             $expire_args = null;
             if (!empty($expire)) {
                 $expire_args = ["x-expires" => ["I", $expire]];
-            }
-
-            $ch->queue_declare(
-                $task_id,               /* queue name */
-                false,                  /* passive */
-                true,                   /* durable */
-                false,                  /* exclusive */
-                true,                   /* auto_delete */
-                false,                  /*no wait*/
-                $expire_args
-            );
-
-            try {
-                $ch->queue_bind($task_id, 'celeryresults');
-            } catch (\PhpAmqpLib\Exception\AMQPProtocolChannelException $e) {
-                $ch->close();
-                return false;
             }
 
             $ch->basic_consume(

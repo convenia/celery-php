@@ -119,9 +119,11 @@ abstract class CeleryAbstract
 
         // http://docs.celeryproject.org/en/latest/internals/protocol.html
         $properties = [
+            'reply_to' => $id,
             'correlation_id' => $id,
             'content_type' => 'application/json',
             'content_encoding' => 'utf-8',
+            'routing_key' => $id,
         ];
 
         $headers = [
