@@ -119,9 +119,11 @@ abstract class CeleryAbstract
 
         // http://docs.celeryproject.org/en/latest/internals/protocol.html
         $properties = [
+            'reply_to' => $id,
             'correlation_id' => $id,
             'content_type' => 'application/json',
             'content_encoding' => 'utf-8',
+            'routing_key' => $id,
         ];
 
         $headers = [
@@ -144,23 +146,23 @@ abstract class CeleryAbstract
 
         $this->broker_connection_details['routing_key'] = $routing_key;
 
-        $success = $this->broker_amqp->PostToExchange(
-            $this->broker_connection,
-            $this->broker_connection_details,
-            $body,
-            $properties,
-            $headers
-        );
+        if ($async_result) {
+            return $this->withAsyncResult($id, $task, $args, $body, $properties, $headers);
+        }
+
+       $success = $this->broker_amqp->PostToExchange(
+           $this->broker_connection,
+           $this->broker_connection_details,
+           $body,
+           $properties,
+           $headers
+       );
 
         if (!$success) {
             throw new CeleryPublishException();
         }
 
-        if ($async_result) {
-            return new AsyncResult($id, $this->backend_connection_details, $task, $args);
-        } else {
-            return true;
-        }
+        return true;
     }
 
     /**
@@ -188,5 +190,22 @@ abstract class CeleryAbstract
         );
 
         return $messageBody;
+    }
+
+    private function withAsyncResult($id, $task, $args, $body, $properties, $headers)
+    {
+        $success = $this->broker_amqp->Rpc(
+            $this->broker_connection,
+            $this->broker_connection_details,
+            $body,
+            $properties,
+            $headers
+        );
+
+        if (!$success) {
+            throw new CeleryPublishException();
+        }
+
+        return new AsyncResult($id, $this->backend_connection_details, $task, $args);
     }
 }

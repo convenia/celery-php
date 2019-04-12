@@ -84,32 +84,33 @@ class AMQPLibConnector extends AbstractAMQPConnector
     public function PostToExchange($connection, $details, $body, $properties, $headers)
     {
         $ch = $connection->channel();
+        $this->Post($ch, $properties, $details, $headers, $body);
+
+        $ch->close();
+
+        /* Satisfy Celery::PostTask() error checking */
+        /* TODO: catch some exceptions? Which ones? */
+        return true;
+    }
+
+    public function Rpc($connection, $details, $body, $properties, $headers)
+    {
+        $ch = $connection->channel();
 
         $ch->queue_declare(
-            $details['binding'],    /* queue name - "celery" */
+            $properties['reply_to'],    /* queue name - "celery" */
             false,                  /* passive */
             true,                   /* durable */
             false,                  /* exclusive */
-            false                   /* auto_delete */
-        );
-
-        $ch->exchange_declare(
-            $details['exchange'],    /* name */
-            'direct',                /* type */
-            false,                   /* passive */
-            true,                    /* durable */
-            false                    /* auto_delete */
+            true                   /* auto_delete */
         );
 
         $ch->queue_bind(
-            $details['binding'],    /* queue name - "celery" */
+            $properties['reply_to'],    /* temporary queue name  */
             $details['exchange']    /* exchange name - "celery" */
         );
 
-        $properties['application_headers'] = new \PhpAmqpLib\Wire\AMQPTable($headers);
-        $msg = new \PhpAmqpLib\Message\AMQPMessage($body, $properties);
-
-        $ch->basic_publish($msg, $details['exchange'], $details['routing_key']);
+        $this->Post($ch, $properties, $details, $headers, $body);
 
         $ch->close();
 
@@ -145,23 +146,6 @@ class AMQPLibConnector extends AbstractAMQPConnector
                 $expire_args = ["x-expires" => ["I", $expire]];
             }
 
-            $ch->queue_declare(
-                $task_id,               /* queue name */
-                false,                  /* passive */
-                true,                   /* durable */
-                false,                  /* exclusive */
-                true,                   /* auto_delete */
-                false,                  /*no wait*/
-                $expire_args
-            );
-
-            try {
-                $ch->queue_bind($task_id, 'celeryresults');
-            } catch (\PhpAmqpLib\Exception\AMQPProtocolChannelException $e) {
-                $ch->close();
-                return false;
-            }
-
             $ch->basic_consume(
                 $task_id,                /* queue */
                 '',                      /* consumer tag */
@@ -195,5 +179,13 @@ class AMQPLibConnector extends AbstractAMQPConnector
         }
 
         return false;
+    }
+
+    private function Post($ch, $properties, $details, $headers, $body)
+    {
+        $properties['application_headers'] = new \PhpAmqpLib\Wire\AMQPTable($headers);
+        $msg = new \PhpAmqpLib\Message\AMQPMessage($body, $properties);
+
+        $ch->basic_publish($msg, $details['exchange'], $details['routing_key']);
     }
 }
